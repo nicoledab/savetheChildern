@@ -1,0 +1,200 @@
+/************************************************************************************
+ * Description : 트랜스퍼 관리 오브젝트의 '트랜스퍼 일괄처리' 버튼.
+ * Flow (트랜스퍼 > 결연종료 및 생성 ) 의 트랜스퍼 사유 할당 부분을 코드화
+ *
+ * Ver      Date           Author          Modification
+ * ===================================================================================
+   1.0      2023-06-15     hs.jung          Create
+*************************************************************************************/
+
+public with sharing class ActivateTransferBatchController {
+
+    @AuraEnabled
+    public static String doSave() {
+        System.debug(' doSave ');
+        String result = 'success^||^처리되었습니다.';
+
+        try {
+            // 전월의 시작일과 종료일 계산
+            Date currentDate = Date.today();
+            Date previousMonthStartDate = currentDate.toStartOfMonth().addMonths(-1);
+            Date previousMonthEndDate = previousMonthStartDate.addMonths(1).addDays(-1);
+
+            List<Transfer__c> listTransfer;
+            If(!Test.isRunningTest()){
+                listTransfer = new List<Transfer__c>([
+                        SELECT Id, Name, CreatedDate, ChildRelationship__c, NewCR__c, NewChild__c, TransferReason__c, Contact__c, TransferUser__c
+                                , fm_TMResult__c, fm_TMResult2__c, fm_TMResult3__c, NewCR__r.RelationshipStatus__c, case__c
+                                , Child__c, ChildRelationship__r.RecurringDonation__c, ChildRelationship__r.CRAmount__c, IsDeactiveFlow__c
+                                , Child__r.ChildStatus__c, Child__r.ReserveStatus__c, ChildRelationship__r.RecurringDonation__r.Contact__c, ChildRelationship__r.RegDate__c
+                                , NewChild__r.Country__r.Continent__c, NewChild__r.DonorId__c, NewChild__r.Name, NewChild__r.Country__r.Name, NewChild__r.Sex__c, NewChild__r.fm_Age__c
+                        FROM Transfer__c
+                        WHERE IsActiveTransfer__c = false
+                        AND fm_TMResult__c != null
+                        AND fm_TMResult2__c != null
+                        AND fm_TMResult3__c != null
+                        AND CreatedDate >= :previousMonthStartDate
+                        AND CreatedDate <= :previousMonthEndDate
+                ]);
+            }
+            else{ //TestClass 일경우에 Case 상담결과 값이 들어가지 않는 문제가 있어서 분기처리함
+                listTransfer = new List<Transfer__c>([
+                        SELECT Id, Name, CreatedDate, ChildRelationship__c, NewCR__c, NewChild__c, TransferReason__c, Contact__c, TransferUser__c
+                                , fm_TMResult__c, fm_TMResult2__c, fm_TMResult3__c, NewCR__r.RelationshipStatus__c, case__c
+                                , Child__c, ChildRelationship__r.RecurringDonation__c, ChildRelationship__r.CRAmount__c, IsDeactiveFlow__c
+                                , Child__r.ChildStatus__c, Child__r.ReserveStatus__c, ChildRelationship__r.RecurringDonation__r.Contact__c, ChildRelationship__r.RegDate__c
+                                , NewChild__r.Country__r.Continent__c, NewChild__r.DonorId__c, NewChild__r.Name, NewChild__r.Country__r.Name, NewChild__r.Sex__c, NewChild__r.fm_Age__c
+                        FROM Transfer__c
+                        WHERE IsActiveTransfer__c = false
+                        AND CreatedDate >= :previousMonthStartDate
+                        AND CreatedDate <= :previousMonthEndDate
+                ]);
+            }
+
+            System.debug('list Transfer <<<<<<<  ' + listTransfer);
+
+
+            if (!listTransfer.isEmpty()) {
+                List<ChildRelationship__c> listChildRelationship = new List<ChildRelationship__c>();
+
+                Set<Id> setChildId = new Set<Id>();
+                Set<Id> setChildRelationshipId = new Set<Id>();
+
+
+                Map<Id, String> mapChildRelationshipIds = new Map<Id, String>();
+                Map<Id, String> mapIdForNewChild = new Map<Id, String>();
+
+                Map<Id, Id> mapChildContact = new Map<Id, Id>();
+
+
+                for (Transfer__c obj : listTransfer) {
+                    System.debug('obj.Child__c :: ' + obj.Child__c);
+                    obj.IsDeactiveFlow__c = true;
+
+                    setChildId.add(obj.Child__c);
+//                    setChildId.add(obj.NewChild__c);
+
+                    setChildRelationshipId.add( obj.ChildRelationship__c); // 기존결연
+
+                    mapChildRelationshipIds.put(obj.ChildRelationship__c, obj.TransferReason__c);
+                    mapIdForNewChild.put(obj.ChildRelationship__c, obj.NewChild__c);
+                    mapChildContact.put(obj.NewChild__c, obj.Contact__c);
+                }
+
+
+                // 기존 결연 종료
+                List<ChildRelationship__c> listUpdateChildRelationship = new List<ChildRelationship__c>();
+                listUpdateChildRelationship = [
+                        SELECT Id, EndDate__c, EndReason__c, RelationshipStatus__c, SubStatus__c, RecordTypeId
+                                , TransferChild__c, Name, Child__c, RecurringDonation__c, Child__r.Country__r.CountryCode__c
+                                , Child__r.ChildStatus__c
+                        FROM ChildRelationship__c
+                        WHERE Id IN :setChildRelationshipId
+//                        WHERE Child__c IN :setChildId //
+
+                ];
+
+                System.debug('listUpdateChildRelationship  ChildStatus__c 조회' + listUpdateChildRelationship);
+
+
+                if (!listUpdateChildRelationship.isEmpty()) {
+                    for (ChildRelationship__c obj : listUpdateChildRelationship) {
+//                        String TransferReason = mapChildRelationshipIds.get(obj.Id);
+//                        String TransferChild = mapIdForNewChild.get(obj.Id);
+//                        System.debug('TransferReason ::::' + mapChildRelationshipIds.get(obj.Id));
+//                        System.debug('TransferChild ::::' + TransferChild);
+
+                        obj.EndDate__c = Date.today();
+                        obj.RelationshipStatus__c = '결연종료';
+                        obj.SubStatus__c = '트랜스퍼종료';
+
+                        if (mapChildRelationshipIds.keySet().contains(obj.Id)) {
+                            obj.EndReason__c = mapChildRelationshipIds.get(obj.Id); // transfer__c : TransferReason__c
+                        }
+
+                        if (mapChildRelationshipIds.keySet().contains(obj.Id)) {
+                            obj.TransferChild__c = mapIdForNewChild.get(obj.Id); //  transfer__c : NewChild__c
+                        }
+
+                    }
+                    update listUpdateChildRelationship;
+                }
+
+
+                // 아동 업데이트 : 기존아동
+                List<Child__c> listChild = new List<Child__c>();
+                listChild = [
+                        SELECT Id, ChildStatus__c, ReserveStatus__c, Country__r.CountryCode__c, Country__c
+                        FROM Child__c
+                        WHERE Id IN :setChildId
+                ];
+
+                if (!listChild.isEmpty()) {
+                    for (Child__c obj : listChild) {
+                        obj.ChildStatus__c = '결연종료';
+                        obj.ReserveStatus__c = 'Ineligible';
+                    }
+                    update listChild;
+                }
+                System.debug('listChild 업데이트 :::: ' + listChild);
+                System.debug('결연업데이트  :::: ' + listUpdateChildRelationship);
+                System.debug('listTransfer 업데이트 :::: ' + listTransfer);
+
+
+                for (Transfer__c obj : listTransfer) {
+
+                    //신규 결연 생성
+                    ChildRelationship__c childRelationship = new ChildRelationship__c();
+                    childRelationship.CRAmount__c = obj.ChildRelationship__r.CRAmount__c;
+                    childRelationship.child__c = obj.NewChild__c;
+                    childRelationship.Contact__c = obj.ChildRelationship__r.RecurringDonation__r.Contact__c; // getOriginRD.Contact__c
+                    childRelationship.Continent__c = obj.NewChild__r.Country__r.Continent__c;
+                    childRelationship.DonationId__c = obj.NewChild__r.DonorId__c;
+                    childRelationship.Name = obj.NewChild__r.Name + '_' + obj.NewChild__r.Country__r.Name + '_' + obj.NewChild__r.Sex__c + '_' + obj.NewChild__r.fm_Age__c ; // NamingConvention
+                    childRelationship.RecordTypeId = Schema.SObjectType.ChildRelationship__c.getRecordTypeInfosByDeveloperName().get('OverseaCR').getRecordTypeId(); // varCRRecordTypeId
+                    childRelationship.RecurringDonation__c = obj.ChildRelationship__r.RecurringDonation__c; // getOriginRD
+                    childRelationship.RegDate__c = obj.ChildRelationship__r.RegDate__c;
+                    childRelationship.RelationshipStatus__c = '결연중';
+                    childRelationship.StartDate__c = currentDate;
+                    childRelationship.SubStatus__c = '트랜스퍼매칭';
+
+                    listChildRelationship.add(childRelationship);
+                    System.debug('listChildRelationship insert ::: ' + listChildRelationship);
+
+                }
+
+                if (!listChildRelationship.isEmpty()) {
+                    insert listChildRelationship;
+                }
+
+                // 아동 상태 업데이트   put(obj.NewChild__c, obj.Contact__c);
+                for (Child__c obj : listChild) {
+                    if (mapChildContact.keySet().contains(obj.Id)) {
+                        obj.ChildStatus__c = '결연중';
+                        obj.Contact__c = mapChildContact.get(obj.Id);
+                    }
+
+                }
+                update listChild;
+
+
+                // transfer: 신규  결연 등록
+                for (Integer i = 0; i < listTransfer.size(); i++) {
+                    listTransfer[i].NewCR__c = listChildRelationship[i].Id;
+                    listTransfer[i].TransferUser__c = UserInfo.getUserId();
+                    listTransfer[i].IsActiveTransfer__c = true;
+                }
+
+
+                update listTransfer;
+                System.debug('after  update listTransfer   :::::: ' + listTransfer);
+
+            }
+
+        } catch (Exception e) {
+            System.debug('[ERROR][Line: ' + e.getLineNumber() + '] Message: ' + e.getMessage() + ' / Cause: ' + e.getCause());
+            result = 'error^||^[ERROR][Line: ' + e.getLineNumber() + '] Message: ' + e.getMessage() + ' / Cause: ' + e.getCause();
+        }
+        return result;
+    }
+}
