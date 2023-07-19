@@ -1,0 +1,66 @@
+<!--
+ - Created by nicole.jung on 2023-06-14.
+ -->
+
+<aura:component description="ActivateTransferBatch"  Controller="ActivateTransferBatchController"
+                implements="force:hasRecordId,force:appHostable,forceCommunity:availableForAllPageTypes,lightning:availableForFlowActions,flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:lightningQuickActionWithoutHeader,force:hasSObjectName,lightning:actionOverride"
+                access="global">
+
+    <!-- Attribute -->
+    <aura:attribute name="showSpinner" type="Boolean" default="false" />
+
+
+    <!-- Handler -->
+    <aura:handler name="init" value="{!this}" action="{!c.fnInit}" />
+
+    <aura:html tag="style">
+        .cuf-content {
+        padding: 0 0rem !important;
+        }
+        .slds-p-around--medium {
+        padding: 0rem !important;
+        }
+        .slds-modal__content{
+        overflow-y:hidden !important;
+        height:10rem !important;
+        max-height:10rem !important;
+
+        border-left: #B7B7B7 solid 1px;
+        border-right: #B7B7B7 solid 1px;
+        }
+        .slds-modal__close{
+        visibility : hidden;
+        }
+    </aura:html>
+
+    <div aura:id="modalContainer">
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+            <aura:if isTrue="{!v.showSpinner}">
+                <lightning:spinner alternativeText="Loading" size="large" variant="brand" />
+            </aura:if>
+            <div class="slds-modal__container" >
+                <div>
+                    <div class="slds-modal__header">
+                        <h2 class="title slds-text-heading_medium">
+                            트랜스퍼 일괄처리
+                        </h2>
+                    </div>
+                    <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1" style="width: auto; height: auto;">
+
+                        <lightning:layout class="" multipleRows="true">
+
+                            <lightning:layoutItem class="" size="12" padding="around-small">
+                                <span style="color:red; font-weight:bold;">※ 트랜스퍼 일괄처리를 진행하시겠습니까?  </span>
+                            </lightning:layoutItem>
+                        </lightning:layout>
+                    </div>
+                    <div class="slds-col modal-footer slds-modal__footer">
+                        <lightning:button variant="neutral" label="취소" onclick="{!c.fnCancel}" />
+                        <lightning:button variant="brand" label="처리" onclick="{!c.fnSave}" />
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+</aura:component>
